@@ -92,24 +92,39 @@ jobs:
       - name: Prepare Release Artifacts
         run: |
           mkdir release_artifacts
+          mkdir release_artifacts\win11
+          mkdir release_artifacts\win10
           
-          # Win11
-          if (Test-Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64") {
-            mkdir release_artifacts\win11
-            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64\*" -Destination "release_artifacts\win11" -Recurse
-          } elseif (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release") {
-            mkdir release_artifacts\win11
-            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release\*" -Destination "release_artifacts\win11" -Recurse
+          Write-Host "Locating compiled artifacts..."
+          
+          # Find all essential Win11 files and flatten them into win11 folder
+          $win11Items = Get-ChildItem -Path "kvm-guest-drivers-windows\viogpu" -Recurse -Include *.sys, *.inf, *.cat, *.exe, *.pdb | Where-Object { $_.FullName -match "win11" -or $_.FullName -match "Win11 Release" }
+          if ($win11Items) {
+            Write-Host "Copying Win11 binaries..."
+            foreach ($item in $win11Items) { Copy-Item -Path $item.FullName -Destination "release_artifacts\win11\" -Force }
+          } else {
+            Write-Host "Warning: No Win11 binaries found."
+            # Fallback direct copies in case paths don't explicitly contain 'Win11'
+            if (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release") {
+               Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release\*" -Destination "release_artifacts\win11\" -Recurse -Force
+            }
           }
           
-          # Win10
-          if (Test-Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win10_amd64\amd64") {
-            mkdir release_artifacts\win10
-            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win10_amd64\amd64\*" -Destination "release_artifacts\win10" -Recurse
-          } elseif (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win10 Release") {
-            mkdir release_artifacts\win10
-            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win10 Release\*" -Destination "release_artifacts\win10" -Recurse
+          # Find all essential Win10 files and flatten them into win10 folder
+          $win10Items = Get-ChildItem -Path "kvm-guest-drivers-windows\viogpu" -Recurse -Include *.sys, *.inf, *.cat, *.exe, *.pdb | Where-Object { $_.FullName -match "win10" -or $_.FullName -match "Win10 Release" }
+          if ($win10Items) {
+            Write-Host "Copying Win10 binaries..."
+            foreach ($item in $win10Items) { Copy-Item -Path $item.FullName -Destination "release_artifacts\win10\" -Force }
+          } else {
+            Write-Host "Warning: No Win10 binaries found."
+            if (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win10 Release") {
+               Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win10 Release\*" -Destination "release_artifacts\win10\" -Recurse -Force
+            }
           }
+          
+          # Debug output to verify what was packaged
+          Write-Host "Final packaged directory structure:"
+          tree release_artifacts /F
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
