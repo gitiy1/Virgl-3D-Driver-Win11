@@ -27,11 +27,12 @@ jobs:
       - name: Setup Enterprise WDK (EWDK)
         shell: powershell
         run: |
-          # Use the absolute static link we retrieved from Microsoft for Windows 11 22H2 EWDK ISO
+          # The ISO is over 20GB. PowerShell's Invoke-WebRequest can be extremely slow and appear frozen
+          # due to its progress stream rendering. Using curl.exe is much faster and more reliable.
           $ewdkUrl = "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/EWDK_ni_release_svc_prod1_22621_230929-1800.iso"
 
-          Write-Host "Downloading EWDK ISO directly from $ewdkUrl..."
-          Invoke-WebRequest -Uri $ewdkUrl -OutFile "$env:GITHUB_WORKSPACE\ewdk.iso"
+          Write-Host "Downloading EWDK ISO directly from $ewdkUrl using curl.exe..."
+          curl.exe -L $ewdkUrl -o "$env:GITHUB_WORKSPACE\ewdk.iso"
 
           if (-not (Test-Path "$env:GITHUB_WORKSPACE\ewdk.iso")) {
             throw "EWDK ISO download failed!"
@@ -39,7 +40,7 @@ jobs:
 
           $fileSize = (Get-Item "$env:GITHUB_WORKSPACE\ewdk.iso").length
           Write-Host "Downloaded EWDK ISO Size: $fileSize bytes"
-          if ($fileSize -lt 1000000000) { # Smaller than 1GB indicates a corrupt or HTML error page download
+          if ($fileSize -lt 1000000000) {
              throw "Downloaded file is too small ($fileSize bytes) to be an ISO!"
           }
 
@@ -77,6 +78,13 @@ jobs:
         run: |
           cd kvm-guest-drivers-windows\viogpu
           cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win10 Release"" /p:Platform=x64"
+
+      - name: Unmount EWDK
+        if: always()
+        run: |
+          if (Test-Path "$env:GITHUB_WORKSPACE\ewdk.iso") {
+            Dismount-DiskImage -ImagePath "$env:GITHUB_WORKSPACE\ewdk.iso"
+          }
 
       - name: Prepare Release Artifacts
         run: |
