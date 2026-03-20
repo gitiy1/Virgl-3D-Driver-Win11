@@ -24,15 +24,17 @@ jobs:
         with:
           path: my-viogpu
 
+      - name: Install aria2
+        run: choco install aria2 -y
+
       - name: Setup Enterprise WDK (EWDK)
         shell: powershell
         run: |
-          # The ISO is over 20GB. PowerShell's Invoke-WebRequest can be extremely slow and appear frozen
-          # due to its progress stream rendering. Using curl.exe is much faster and more reliable.
+          # Use aria2 to drastically speed up the 20GB ISO download using multiple connections
           $ewdkUrl = "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/EWDK_ni_release_svc_prod1_22621_230929-1800.iso"
           
-          Write-Host "Downloading EWDK ISO directly from $ewdkUrl using curl.exe..."
-          curl.exe -L $ewdkUrl -o "$env:GITHUB_WORKSPACE\ewdk.iso"
+          Write-Host "Downloading EWDK ISO directly from $ewdkUrl using aria2c..."
+          aria2c.exe -x 16 -s 16 -d "$env:GITHUB_WORKSPACE" -o ewdk.iso $ewdkUrl
           
           if (-not (Test-Path "$env:GITHUB_WORKSPACE\ewdk.iso")) {
             throw "EWDK ISO download failed!"
