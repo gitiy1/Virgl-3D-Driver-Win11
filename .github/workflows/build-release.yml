@@ -1,0 +1,106 @@
+name: Build and Release Driver
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for manual release (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0-manual'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: my-viogpu
+
+      - name: Add msbuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup Windows Driver Kit (WDK)
+        run: |
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/?linkid=2273577" -OutFile wdksetup.exe
+          Start-Process -FilePath wdksetup.exe -ArgumentList "/q" -Wait -NoNewWindow
+          Remove-Item wdksetup.exe
+
+      - name: Clone kvm-guest-drivers-windows
+        run: |
+          git clone https://github.com/virtio-win/kvm-guest-drivers-windows.git
+
+      - name: Replace viogpu directory
+        run: |
+          Remove-Item -Recurse -Force kvm-guest-drivers-windows\viogpu
+          Copy-Item -Recurse -Force my-viogpu kvm-guest-drivers-windows\viogpu
+
+      - name: Build VirtioLib
+        run: |
+          cd kvm-guest-drivers-windows\VirtIO
+          msbuild VirtioLib.vcxproj /p:Configuration="Win11 Release" /p:Platform=x64
+
+      - name: Build VirtIO-GPU Driver
+        run: |
+          cd kvm-guest-drivers-windows\viogpu
+          msbuild viogpu.sln /p:Configuration="Win11 Release" /p:Platform=x64
+
+      - name: Prepare Release Artifacts
+        run: |
+          mkdir release_artifacts
+          if (Test-Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64") {
+            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64\*" -Destination "release_artifacts" -Recurse
+          } elseif (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release") {
+            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release\*" -Destination "release_artifacts" -Recurse
+          } else {
+            echo "Artifacts directory not found! Dumping tree..."
+            tree kvm-guest-drivers-windows /F
+            throw "Artifacts directory not found!"
+          }
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: viogpu-driver-win11-x64
+          path: release_artifacts/
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: viogpu-driver-win11-x64
+          path: release_artifacts/
+
+      - name: Create Zip Archive
+        run: |
+          cd release_artifacts
+          zip -r ../viogpu-driver-win11-x64.zip ./*
+
+      - name: Determine Tag Name
+        id: determine_tag
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+          fi
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          files: viogpu-driver-win11-x64.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
