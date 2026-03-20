@@ -24,15 +24,6 @@ jobs:
         with:
           path: my-viogpu
 
-      - name: Add msbuild to PATH
-        uses: microsoft/setup-msbuild@v2
-
-      - name: Setup Windows Driver Kit (WDK)
-        run: |
-          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/?linkid=2273577" -OutFile wdksetup.exe
-          Start-Process -FilePath wdksetup.exe -ArgumentList "/q" -Wait -NoNewWindow
-          Remove-Item wdksetup.exe
-
       - name: Clone kvm-guest-drivers-windows
         run: |
           git clone https://github.com/virtio-win/kvm-guest-drivers-windows.git
@@ -41,6 +32,11 @@ jobs:
         run: |
           Remove-Item -Recurse -Force kvm-guest-drivers-windows\viogpu
           Copy-Item -Recurse -Force my-viogpu kvm-guest-drivers-windows\viogpu
+
+      - name: Setup EWDK
+        uses: windowstools/ewdk-setup-action@v1.0.3
+        with:
+          ewdk-version: '22621' # Or another reliable version for VS2022
 
       - name: Build VirtioLib
         run: |
