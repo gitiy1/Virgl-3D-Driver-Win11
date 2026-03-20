@@ -24,6 +24,13 @@ jobs:
         with:
           path: my-viogpu
 
+      - name: Add MSBuild to PATH
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Setup WDK (Windows Driver Kit)
+        run: |
+          choco install windowsdriverkit10 -y --ignore-checksums
+
       - name: Clone kvm-guest-drivers-windows
         run: |
           git clone https://github.com/virtio-win/kvm-guest-drivers-windows.git
@@ -33,56 +40,52 @@ jobs:
           Remove-Item -Recurse -Force kvm-guest-drivers-windows\viogpu
           Copy-Item -Recurse -Force my-viogpu kvm-guest-drivers-windows\viogpu
 
-      - name: Download EWDK ISO
+      - name: Build VirtioLib (Win11 x64)
         run: |
-          # Use Windows 11, version 22H2 EWDK (known stable URL for VS 2022)
-          curl.exe -L "https://go.microsoft.com/fwlink/?linkid=2262222" -o ewdk.iso
-          if (-not (Test-Path "ewdk.iso")) {
-            throw "Failed to download EWDK ISO!"
-          }
+          cd kvm-guest-drivers-windows\VirtIO
+          msbuild VirtioLib.vcxproj /p:Configuration="Win11 Release" /p:Platform=x64
 
-      - name: Mount EWDK and Setup Environment
-        id: ewdk
+      - name: Build VirtIO-GPU Driver (Win11 x64)
         run: |
-          $isoPath = Resolve-Path "ewdk.iso"
-          $mountResult = Mount-DiskImage -ImagePath $isoPath.Path -PassThru
-          $driveLetter = ($mountResult | Get-Volume).DriveLetter
-          echo "EWDK_DRIVE=$driveLetter" >> $env:GITHUB_ENV
-          echo "EWDK Mounted on ${driveLetter}:"
+          cd kvm-guest-drivers-windows\viogpu
+          msbuild viogpu.sln /p:Configuration="Win11 Release" /p:Platform=x64
 
-      - name: Build VirtioLib
+      - name: Build VirtioLib (Win10 x64)
         run: |
-          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && cd kvm-guest-drivers-windows\VirtIO && msbuild VirtioLib.vcxproj /p:Configuration=""Win11 Release"" /p:Platform=x64"
+          cd kvm-guest-drivers-windows\VirtIO
+          msbuild VirtioLib.vcxproj /p:Configuration="Win10 Release" /p:Platform=x64
 
-      - name: Build VirtIO-GPU Driver
+      - name: Build VirtIO-GPU Driver (Win10 x64)
         run: |
-          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && cd kvm-guest-drivers-windows\viogpu && msbuild viogpu.sln /p:Configuration=""Win11 Release"" /p:Platform=x64"
-
-      - name: Unmount EWDK
-        if: always()
-        run: |
-          if (Test-Path "ewdk.iso") {
-            $isoPath = Resolve-Path "ewdk.iso"
-            Dismount-DiskImage -ImagePath $isoPath.Path
-          }
+          cd kvm-guest-drivers-windows\viogpu
+          msbuild viogpu.sln /p:Configuration="Win10 Release" /p:Platform=x64
 
       - name: Prepare Release Artifacts
         run: |
           mkdir release_artifacts
+
+          # Win11
           if (Test-Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64") {
-            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64\*" -Destination "release_artifacts" -Recurse
+            mkdir release_artifacts\win11
+            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win11_amd64\amd64\*" -Destination "release_artifacts\win11" -Recurse
           } elseif (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release") {
-            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release\*" -Destination "release_artifacts" -Recurse
-          } else {
-            echo "Artifacts directory not found! Dumping tree..."
-            tree kvm-guest-drivers-windows /F
-            throw "Artifacts directory not found!"
+            mkdir release_artifacts\win11
+            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win11 Release\*" -Destination "release_artifacts\win11" -Recurse
+          }
+
+          # Win10
+          if (Test-Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win10_amd64\amd64") {
+            mkdir release_artifacts\win10
+            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\viogpudo\objfre_win10_amd64\amd64\*" -Destination "release_artifacts\win10" -Recurse
+          } elseif (Test-Path "kvm-guest-drivers-windows\viogpu\x64\Win10 Release") {
+            mkdir release_artifacts\win10
+            Copy-Item -Path "kvm-guest-drivers-windows\viogpu\x64\Win10 Release\*" -Destination "release_artifacts\win10" -Recurse
           }
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: viogpu-driver-win11-x64
+          name: viogpu-driver-x64
           path: release_artifacts/
 
   release:
@@ -94,13 +97,13 @@ jobs:
       - name: Download Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: viogpu-driver-win11-x64
+          name: viogpu-driver-x64
           path: release_artifacts/
 
       - name: Create Zip Archive
         run: |
           cd release_artifacts
-          zip -r ../viogpu-driver-win11-x64.zip ./*
+          zip -r ../viogpu-driver-x64.zip ./*
 
       - name: Determine Tag Name
         id: determine_tag
@@ -115,6 +118,6 @@ jobs:
         uses: softprops/action-gh-release@v1
         with:
           tag_name: ${{ env.TAG_NAME }}
-          files: viogpu-driver-win11-x64.zip
+          files: viogpu-driver-x64.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
