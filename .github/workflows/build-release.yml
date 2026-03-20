@@ -27,9 +27,30 @@ jobs:
       - name: Add MSBuild to PATH
         uses: microsoft/setup-msbuild@v2
 
-      - name: Setup WDK (Windows Driver Kit)
+      - name: Cache WDK Installer
+        id: cache-wdk
+        uses: actions/cache@v4
+        with:
+          path: C:\wdk
+          key: ${{ runner.os }}-wdk-22H2-v1
+
+      - name: Download WDK
+        if: steps.cache-wdk.outputs.cache-hit != 'true'
         run: |
-          choco install windowsdriverkit10 -y --ignore-checksums
+          mkdir C:\wdk
+          Invoke-WebRequest -Uri "https://go.microsoft.com/fwlink/?linkid=2196230" -OutFile C:\wdk\wdksetup.exe
+
+      - name: Install WDK
+        run: |
+          Start-Process -FilePath C:\wdk\wdksetup.exe -ArgumentList "/q" -Wait -NoNewWindow
+          
+          # Install the WDK extension for Visual Studio
+          $vsixPath = "C:\Program Files (x86)\Windows Kits\10\Vsix\VS2022\10.0.22621.0\WDK.vsix"
+          if (Test-Path $vsixPath) {
+            Start-Process -FilePath "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VSIXInstaller.exe" -ArgumentList "/q /a `"$vsixPath`"" -Wait -NoNewWindow
+          } else {
+            Write-Host "WDK.vsix not found, assuming MSBuild targets are already integrated or installation failed."
+          }
 
       - name: Clone kvm-guest-drivers-windows
         run: |
