@@ -33,20 +33,31 @@ jobs:
           Remove-Item -Recurse -Force kvm-guest-drivers-windows\viogpu
           Copy-Item -Recurse -Force my-viogpu kvm-guest-drivers-windows\viogpu
 
-      - name: Setup EWDK
-        uses: windowstools/ewdk-setup-action@v1.0.3
-        with:
-          ewdk-version: '22621' # Or another reliable version for VS2022
+      - name: Download EWDK ISO
+        run: |
+          # Use Windows 11, version 22H2 EWDK (known stable URL for VS 2022)
+          curl.exe -L "https://go.microsoft.com/fwlink/?linkid=2262222" -o ewdk.iso
+          
+      - name: Mount EWDK and Setup Environment
+        id: ewdk
+        run: |
+          $mountResult = Mount-DiskImage -ImagePath "ewdk.iso" -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter
+          echo "EWDK_DRIVE=$driveLetter" >> $env:GITHUB_ENV
+          echo "EWDK Mounted on ${driveLetter}:"
 
       - name: Build VirtioLib
         run: |
-          cd kvm-guest-drivers-windows\VirtIO
-          msbuild VirtioLib.vcxproj /p:Configuration="Win11 Release" /p:Platform=x64
+          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && cd kvm-guest-drivers-windows\VirtIO && msbuild VirtioLib.vcxproj /p:Configuration=""Win11 Release"" /p:Platform=x64"
 
       - name: Build VirtIO-GPU Driver
         run: |
-          cd kvm-guest-drivers-windows\viogpu
-          msbuild viogpu.sln /p:Configuration="Win11 Release" /p:Platform=x64
+          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && cd kvm-guest-drivers-windows\viogpu && msbuild viogpu.sln /p:Configuration=""Win11 Release"" /p:Platform=x64"
+
+      - name: Unmount EWDK
+        if: always()
+        run: |
+          Dismount-DiskImage -ImagePath "ewdk.iso"
 
       - name: Prepare Release Artifacts
         run: |
