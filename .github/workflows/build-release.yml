@@ -56,10 +56,11 @@ jobs:
         run: |
           git clone https://github.com/virtio-win/kvm-guest-drivers-windows.git
 
-      - name: Replace viogpu directory
+      - name: Merge user code into viogpu directory
         run: |
-          Remove-Item -Recurse -Force kvm-guest-drivers-windows\viogpu
-          Copy-Item -Recurse -Force my-viogpu kvm-guest-drivers-windows\viogpu
+          # DO NOT delete the original viogpu folder! It contains the .sln and .vcxproj files.
+          # Just overwrite the original viogpu contents with the user's modifications.
+          Copy-Item -Recurse -Force my-viogpu\* kvm-guest-drivers-windows\viogpu\
 
       - name: Build VirtioLib (Win11 x64)
         run: |
