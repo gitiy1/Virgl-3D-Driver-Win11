@@ -37,11 +37,15 @@ jobs:
         run: |
           # Use Windows 11, version 22H2 EWDK (known stable URL for VS 2022)
           curl.exe -L "https://go.microsoft.com/fwlink/?linkid=2262222" -o ewdk.iso
+          if (-not (Test-Path "ewdk.iso")) {
+            throw "Failed to download EWDK ISO!"
+          }
 
       - name: Mount EWDK and Setup Environment
         id: ewdk
         run: |
-          $mountResult = Mount-DiskImage -ImagePath "ewdk.iso" -PassThru
+          $isoPath = Resolve-Path "ewdk.iso"
+          $mountResult = Mount-DiskImage -ImagePath $isoPath.Path -PassThru
           $driveLetter = ($mountResult | Get-Volume).DriveLetter
           echo "EWDK_DRIVE=$driveLetter" >> $env:GITHUB_ENV
           echo "EWDK Mounted on ${driveLetter}:"
@@ -57,7 +61,10 @@ jobs:
       - name: Unmount EWDK
         if: always()
         run: |
-          Dismount-DiskImage -ImagePath "ewdk.iso"
+          if (Test-Path "ewdk.iso") {
+            $isoPath = Resolve-Path "ewdk.iso"
+            Dismount-DiskImage -ImagePath $isoPath.Path
+          }
 
       - name: Prepare Release Artifacts
         run: |
