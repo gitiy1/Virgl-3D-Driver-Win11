@@ -24,8 +24,30 @@ jobs:
         with:
           path: my-viogpu
 
-      - name: Add MSBuild to PATH
-        uses: microsoft/setup-msbuild@v2
+      - name: Setup Enterprise WDK (EWDK)
+        shell: powershell
+        run: |
+          # Use the absolute static link we retrieved from Microsoft for Windows 11 22H2 EWDK ISO
+          $ewdkUrl = "https://software-static.download.prss.microsoft.com/dbazure/888969d5-f34g-4e03-ac9d-1f9786c66749/EWDK_ni_release_svc_prod1_22621_230929-1800.iso"
+          
+          Write-Host "Downloading EWDK ISO directly from $ewdkUrl..."
+          Invoke-WebRequest -Uri $ewdkUrl -OutFile "$env:GITHUB_WORKSPACE\ewdk.iso"
+          
+          if (-not (Test-Path "$env:GITHUB_WORKSPACE\ewdk.iso")) {
+            throw "EWDK ISO download failed!"
+          }
+          
+          $fileSize = (Get-Item "$env:GITHUB_WORKSPACE\ewdk.iso").length
+          Write-Host "Downloaded EWDK ISO Size: $fileSize bytes"
+          if ($fileSize -lt 1000000000) { # Smaller than 1GB indicates a corrupt or HTML error page download
+             throw "Downloaded file is too small ($fileSize bytes) to be an ISO!"
+          }
+
+          Write-Host "Mounting EWDK ISO..."
+          $mountResult = Mount-DiskImage -ImagePath "$env:GITHUB_WORKSPACE\ewdk.iso" -PassThru
+          $driveLetter = ($mountResult | Get-Volume).DriveLetter
+          Write-Host "Mounted EWDK on drive ${driveLetter}:"
+          echo "EWDK_DRIVE=$driveLetter" >> $env:GITHUB_ENV
 
       - name: Clone kvm-guest-drivers-windows
         run: |
@@ -36,57 +58,25 @@ jobs:
           Remove-Item -Recurse -Force kvm-guest-drivers-windows\viogpu
           Copy-Item -Recurse -Force my-viogpu kvm-guest-drivers-windows\viogpu
 
-      - name: Cache WDK Installer
-        id: cache-wdk
-        uses: actions/cache@v4
-        with:
-          path: C:\wdk
-          key: ${{ runner.os }}-wdk-22621-v2
-
-      - name: Download WDK
-        if: steps.cache-wdk.outputs.cache-hit != 'true'
-        run: |
-          mkdir C:\wdk
-          # Direct download for Windows 11, version 22H2 WDK
-          Invoke-WebRequest "https://download.microsoft.com/download/c/f/8/cf80b955-d578-4635-825c-2801911f9d79/wdk/wdksetup.exe" -OutFile "C:\wdk\wdksetup.exe"
-
-      - name: Install WDK and VSIX
-        run: |
-          Write-Host "Installing WDK..."
-          Start-Process -FilePath "C:\wdk\wdksetup.exe" -ArgumentList "/q" -Wait -NoNewWindow
-          
-          Write-Host "Locating WDK.vsix..."
-          $vsixPath = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits\10\Vsix" -Filter "WDK.vsix" -Recurse | Select-Object -First 1
-          
-          if ($vsixPath) {
-              Write-Host "Found VSIX at: $($vsixPath.FullName)"
-              $vsixInstaller = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\Common7\IDE\VSIXInstaller.exe"
-              Write-Host "Installing VSIX Extension into Visual Studio..."
-              Start-Process -FilePath $vsixInstaller -ArgumentList "/q /admin `"$($vsixPath.FullName)`"" -Wait -NoNewWindow
-              Write-Host "VSIX Installation completed."
-          } else {
-              Write-Host "Warning: WDK.vsix not found! WDK installation may be incomplete."
-          }
-
       - name: Build VirtioLib (Win11 x64)
         run: |
           cd kvm-guest-drivers-windows\VirtIO
-          msbuild VirtioLib.vcxproj /p:Configuration="Win11 Release" /p:Platform=x64
+          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild VirtioLib.vcxproj /p:Configuration=""Win11 Release"" /p:Platform=x64"
 
       - name: Build VirtIO-GPU Driver (Win11 x64)
         run: |
           cd kvm-guest-drivers-windows\viogpu
-          msbuild viogpu.sln /p:Configuration="Win11 Release" /p:Platform=x64
+          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win11 Release"" /p:Platform=x64"
 
       - name: Build VirtioLib (Win10 x64)
         run: |
           cd kvm-guest-drivers-windows\VirtIO
-          msbuild VirtioLib.vcxproj /p:Configuration="Win10 Release" /p:Platform=x64
+          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild VirtioLib.vcxproj /p:Configuration=""Win10 Release"" /p:Platform=x64"
 
       - name: Build VirtIO-GPU Driver (Win10 x64)
         run: |
           cd kvm-guest-drivers-windows\viogpu
-          msbuild viogpu.sln /p:Configuration="Win10 Release" /p:Platform=x64
+          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win10 Release"" /p:Platform=x64"
 
       - name: Prepare Release Artifacts
         run: |
