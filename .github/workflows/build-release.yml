@@ -64,22 +64,22 @@ jobs:
       - name: Build VirtioLib (Win11 x64)
         run: |
           cd kvm-guest-drivers-windows\VirtIO
-          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild VirtioLib.vcxproj /p:Configuration=""Win11 Release"" /p:Platform=x64"
+          cmd.exe /c "call ${{ env.EWDK_DRIVE }}:\BuildEnv\SetupBuildEnv.cmd && msbuild VirtioLib.vcxproj /p:Configuration=""Win11 Release"" /p:Platform=x64"
 
       - name: Build VirtIO-GPU Driver (Win11 x64)
         run: |
           cd kvm-guest-drivers-windows\viogpu
-          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win11 Release"" /p:Platform=x64"
+          cmd.exe /c "call ${{ env.EWDK_DRIVE }}:\BuildEnv\SetupBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win11 Release"" /p:Platform=x64"
 
       - name: Build VirtioLib (Win10 x64)
         run: |
           cd kvm-guest-drivers-windows\VirtIO
-          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild VirtioLib.vcxproj /p:Configuration=""Win10 Release"" /p:Platform=x64"
+          cmd.exe /c "call ${{ env.EWDK_DRIVE }}:\BuildEnv\SetupBuildEnv.cmd && msbuild VirtioLib.vcxproj /p:Configuration=""Win10 Release"" /p:Platform=x64"
 
       - name: Build VirtIO-GPU Driver (Win10 x64)
         run: |
           cd kvm-guest-drivers-windows\viogpu
-          cmd.exe /c "${{ env.EWDK_DRIVE }}:\LaunchBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win10 Release"" /p:Platform=x64"
+          cmd.exe /c "call ${{ env.EWDK_DRIVE }}:\BuildEnv\SetupBuildEnv.cmd && msbuild viogpu.sln /p:Configuration=""Win10 Release"" /p:Platform=x64"
 
       - name: Unmount EWDK
         if: always()
